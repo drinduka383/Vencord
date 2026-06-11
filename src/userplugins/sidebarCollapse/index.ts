@@ -11,11 +11,14 @@ const STORAGE_KEY = "vc-sidebar-collapse-focus";
 const FOCUS_ATTRIBUTE = "data-vc-sidebar-collapse-focus";
 const DOCK_ATTRIBUTE = "data-vc-sidebar-collapse-dock";
 const FOOTER_ATTRIBUTE = "data-vc-sidebar-collapse-footer";
+const DOCK_PLACEMENT_ATTRIBUTE = "data-vc-sidebar-collapse-dock-placement";
 
 const ROOT_ATTRIBUTES = {
     channels: "data-vc-sidebar-collapse-channels-root",
     layout: "data-vc-sidebar-collapse-layout",
     main: "data-vc-sidebar-collapse-main",
+    member: "data-vc-sidebar-collapse-member-root",
+    memberContent: "data-vc-sidebar-collapse-member-content",
     servers: "data-vc-sidebar-collapse-servers-root",
 } as const;
 
@@ -114,17 +117,38 @@ body[data-vc-sidebar-collapse-focus]
 }
 
 [data-vc-sidebar-collapse-dock] {
-    position: fixed;
     z-index: 2;
-    right: 12px;
-    bottom: 12px;
     box-sizing: border-box;
-    width: min(280px, calc(100vw - 24px));
     max-height: min(42vh, 320px);
     overflow: auto;
     border-radius: 8px;
     background: var(--background-secondary-alt, #1e1f22);
     box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
+}
+
+[data-vc-sidebar-collapse-member-root] {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+}
+
+[data-vc-sidebar-collapse-member-content] {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+}
+
+[data-vc-sidebar-collapse-dock-placement="member"] {
+    position: relative;
+    flex: 0 0 auto;
+    width: 100%;
+    border-radius: 0;
+}
+
+[data-vc-sidebar-collapse-dock-placement="chat"] {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    width: min(280px, calc(100vw - 24px));
 }
 
 [data-vc-sidebar-collapse-dock]
@@ -306,6 +330,20 @@ function removeDockHost() {
     dockHost = undefined;
 }
 
+function placeDockHost() {
+    const host = dockHost;
+    if (!host || !footerRelocation) return;
+
+    const memberRoot = roots.member;
+    if (memberRoot?.isConnected && isVisibleRightColumn(memberRoot)) {
+        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, "member");
+        if (host.parentElement !== memberRoot) memberRoot.append(host);
+    } else {
+        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, "chat");
+        if (host.parentElement !== document.body) document.body?.append(host);
+    }
+}
+
 function updateFooterRelocation() {
     if (!isFocusEnabled()) {
         restoreFooter();
@@ -318,6 +356,8 @@ function updateFooterRelocation() {
         if (footerRelocation) discardRelocatedFooter();
         relocateFooter(discoveredFooter);
     }
+
+    placeDockHost();
 }
 
 function findLayoutBranch(layout: HTMLElement, descendant: HTMLElement) {
@@ -387,6 +427,65 @@ function discoverLayout() {
     }
 }
 
+function isVisibleRightColumn(element: HTMLElement) {
+    const rect = element.getBoundingClientRect();
+    const elementStyle = getComputedStyle(element);
+
+    return rect.width >= 180 && rect.width <= 500
+        && rect.height >= Math.min(240, window.innerHeight * 0.4)
+        && rect.right >= window.innerWidth - 80
+        && elementStyle.display !== "none"
+        && elementStyle.visibility !== "hidden";
+}
+
+function findMemberColumnRoot(element: HTMLElement) {
+    let best: HTMLElement | undefined;
+    let current: HTMLElement | null = element;
+
+    for (let depth = 0; current && current !== document.body && depth < 10; depth++) {
+        if (isVisibleRightColumn(current)) {
+            best = current;
+            if (current.parentElement && isHorizontalLayout(current.parentElement)) break;
+        }
+        current = current.parentElement;
+    }
+
+    return best;
+}
+
+function discoverMemberColumn() {
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>("[aria-label], aside, [role=complementary]"))
+        .filter(element => {
+            if (roots.channels?.contains(element) || roots.servers?.contains(element)) return false;
+
+            const label = getSemanticLabel(element);
+            return /members?|member list|user profile|user information/i.test(label)
+                || element.matches("aside, [role=complementary]");
+        })
+        .map(element => {
+            const root = findMemberColumnRoot(element);
+            if (!root) return;
+
+            const rect = root.getBoundingClientRect();
+            return { element, root, score: rect.height - Math.abs(rect.width - 240) };
+        })
+        .filter((candidate): candidate is NonNullable<typeof candidate> => candidate != null)
+        .sort((a, b) => b.score - a.score);
+
+    const match = candidates[0];
+    if (!match) {
+        setRoot("memberContent", undefined);
+        setRoot("member", undefined);
+        return;
+    }
+
+    setRoot("member", match.root);
+    setRoot(
+        "memberContent",
+        match.root === match.element ? undefined : findLayoutBranch(match.root, match.element)
+    );
+}
+
 function isFocusEnabled() {
     return document.body?.hasAttribute(FOCUS_ATTRIBUTE) ?? false;
 }
@@ -445,6 +544,7 @@ function refresh() {
     refreshFrame = undefined;
     try {
         discoverLayout();
+        discoverMemberColumn();
         placeToggleButton();
         updateFooterRelocation();
     } catch (error) {
