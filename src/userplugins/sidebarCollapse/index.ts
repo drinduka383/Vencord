@@ -9,6 +9,8 @@ import definePlugin, { StartAt } from "@utils/types";
 const STYLE_ID = "vc-sidebar-collapse-style";
 const STORAGE_KEY = "vc-sidebar-collapse-focus";
 const FOCUS_ATTRIBUTE = "data-vc-sidebar-collapse-focus";
+const DOCK_ATTRIBUTE = "data-vc-sidebar-collapse-dock";
+const FOOTER_ATTRIBUTE = "data-vc-sidebar-collapse-footer";
 
 const ROOT_ATTRIBUTES = {
     channels: "data-vc-sidebar-collapse-channels-root",
@@ -110,6 +112,28 @@ body[data-vc-sidebar-collapse-focus]
     background: var(--background-floating, #111214);
     box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
 }
+
+[data-vc-sidebar-collapse-dock] {
+    position: fixed;
+    z-index: 2;
+    right: 12px;
+    bottom: 12px;
+    box-sizing: border-box;
+    width: min(280px, calc(100vw - 24px));
+    max-height: min(42vh, 320px);
+    overflow: auto;
+    border-radius: 8px;
+    background: var(--background-secondary-alt, #1e1f22);
+    box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
+}
+
+[data-vc-sidebar-collapse-dock]
+    > [data-vc-sidebar-collapse-footer] {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+}
 `;
 
 type RootKind = keyof typeof ROOT_ATTRIBUTES;
@@ -119,6 +143,16 @@ let refreshFrame: number | undefined;
 let style: HTMLStyleElement | undefined;
 let toggleButton: HTMLButtonElement | undefined;
 let waitingForDom = false;
+let dockHost: HTMLDivElement | undefined;
+
+interface FooterRelocation {
+    footer: HTMLElement;
+    originalParent: HTMLElement;
+    originalNextSibling: ChildNode | null;
+    placeholder: Comment;
+}
+
+let footerRelocation: FooterRelocation | undefined;
 
 const roots: Partial<Record<RootKind, HTMLElement>> = {};
 
@@ -171,6 +205,118 @@ function findCommonAncestor(elements: HTMLElement[]) {
 
     for (let candidate: HTMLElement | null = first; candidate; candidate = candidate.parentElement) {
         if (rest.every(element => candidate.contains(element))) return candidate;
+    }
+}
+
+function getSemanticLabel(element: HTMLElement) {
+    return [element.getAttribute("aria-label"), element.getAttribute("title")]
+        .filter(Boolean)
+        .join(" ");
+}
+
+function findAccountControl(scope: HTMLElement, pattern: RegExp) {
+    return Array.from(scope.querySelectorAll<HTMLElement>("button, [role=button]"))
+        .find(element => pattern.test(getSemanticLabel(element)));
+}
+
+function findFooterStack() {
+    const channelRoot = roots.channels;
+    if (!channelRoot?.isConnected) return;
+
+    const mute = findAccountControl(channelRoot, /^(?:un)?mute(?:\b|\s)/i);
+    const deafen = findAccountControl(channelRoot, /^(?:un)?deafen(?:\b|\s)/i);
+    const settings = findAccountControl(channelRoot, /^user settings(?:\b|\s)/i);
+    if (!mute || !deafen || !settings) return;
+
+    const accountPanel = findCommonAncestor([mute, deafen, settings]);
+    if (!accountPanel) return;
+
+    const utilityControl = Array.from(channelRoot.querySelectorAll<HTMLElement>("[aria-label], [title]"))
+        .find(element => !accountPanel.contains(element) && /spotify|voice connected|disconnect|noise suppression|start an activity/i.test(getSemanticLabel(element)));
+
+    if (utilityControl) {
+        const utilityStack = findCommonAncestor([accountPanel, utilityControl]);
+        if (utilityStack && utilityStack !== channelRoot && !utilityStack.querySelector("nav"))
+            return utilityStack;
+    }
+
+    for (let candidate = accountPanel.parentElement; candidate && candidate !== channelRoot; candidate = candidate.parentElement) {
+        if (!candidate.querySelector("nav")) return candidate;
+    }
+}
+
+function getDockHost() {
+    if (dockHost?.isConnected) return dockHost;
+
+    dockHost = document.createElement("div");
+    dockHost.setAttribute(DOCK_ATTRIBUTE, "");
+    document.body?.append(dockHost);
+    return dockHost;
+}
+
+function relocateFooter(footer: HTMLElement) {
+    const originalParent = footer.parentElement;
+    if (!originalParent) return;
+
+    const placeholder = document.createComment("SidebarCollapse footer placeholder");
+    const originalNextSibling = footer.nextSibling;
+    originalParent.insertBefore(placeholder, footer);
+    footer.setAttribute(FOOTER_ATTRIBUTE, "");
+    getDockHost().append(footer);
+
+    footerRelocation = { footer, originalNextSibling, originalParent, placeholder };
+}
+
+function discardRelocatedFooter() {
+    const relocation = footerRelocation;
+    if (!relocation) return;
+
+    relocation.footer.removeAttribute(FOOTER_ATTRIBUTE);
+    relocation.footer.remove();
+    relocation.placeholder.remove();
+    footerRelocation = undefined;
+}
+
+function restoreFooter() {
+    const relocation = footerRelocation;
+    if (!relocation) return;
+
+    const { footer, originalNextSibling, originalParent, placeholder } = relocation;
+    footer.removeAttribute(FOOTER_ATTRIBUTE);
+
+    if (placeholder.isConnected) {
+        placeholder.replaceWith(footer);
+    } else if (originalParent.isConnected) {
+        originalParent.insertBefore(
+            footer,
+            originalNextSibling?.parentNode === originalParent ? originalNextSibling : null
+        );
+    } else if (roots.channels?.isConnected) {
+        roots.channels.append(footer);
+    } else {
+        footer.remove();
+    }
+
+    placeholder.remove();
+    footerRelocation = undefined;
+}
+
+function removeDockHost() {
+    dockHost?.remove();
+    dockHost = undefined;
+}
+
+function updateFooterRelocation() {
+    if (!isFocusEnabled()) {
+        restoreFooter();
+        removeDockHost();
+        return;
+    }
+
+    const discoveredFooter = findFooterStack();
+    if (discoveredFooter && discoveredFooter !== footerRelocation?.footer) {
+        if (footerRelocation) discardRelocatedFooter();
+        relocateFooter(discoveredFooter);
     }
 }
 
@@ -263,6 +409,7 @@ function toggleFocus() {
         console.warn("[SidebarCollapse] Could not persist Focus Mode state", error);
     }
     updateButtonState();
+    scheduleRefresh();
 }
 
 function createToggleButton() {
@@ -299,6 +446,7 @@ function refresh() {
     try {
         discoverLayout();
         placeToggleButton();
+        updateFooterRelocation();
     } catch (error) {
         console.error("[SidebarCollapse] Failed to refresh the Discord layout", error);
     }
@@ -375,6 +523,9 @@ export default definePlugin({
 
         for (const kind of Object.keys(ROOT_ATTRIBUTES) as RootKind[])
             setRoot(kind, undefined);
+
+        restoreFooter();
+        removeDockHost();
 
         toggleButton?.removeEventListener("click", toggleFocus);
         toggleButton?.remove();
