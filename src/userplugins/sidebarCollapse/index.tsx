@@ -175,14 +175,15 @@ body[data-vc-sidebar-collapse-focus]
 }
 
 body[data-vc-sidebar-collapse-focus]
-    [data-vc-sidebar-collapse-member-root] {
+    [data-vc-sidebar-collapse-member-root]:has(> [data-vc-sidebar-collapse-dock-placement="member"]) {
     display: flex !important;
     flex-direction: column !important;
     min-height: 0 !important;
 }
 
 body[data-vc-sidebar-collapse-focus]
-    [data-vc-sidebar-collapse-member-content] {
+    [data-vc-sidebar-collapse-member-root]:has(> [data-vc-sidebar-collapse-dock-placement="member"])
+    > [data-vc-sidebar-collapse-member-content] {
     flex: 1 1 auto !important;
     min-height: 0 !important;
 }
@@ -306,29 +307,27 @@ function findAccountControl(scope: HTMLElement, pattern: RegExp) {
 }
 
 function findFooterStack() {
-    const channelRoot = roots.channels;
-    if (!channelRoot?.isConnected) return;
+    const channelRoot = roots.channels?.isConnected ? roots.channels : undefined;
+    const scope = channelRoot ?? document.body;
 
-    const mute = findAccountControl(channelRoot, /^(?:un)?mute(?:\b|\s)/i);
-    const deafen = findAccountControl(channelRoot, /^(?:un)?deafen(?:\b|\s)/i);
-    const settings = findAccountControl(channelRoot, /^user settings(?:\b|\s)/i);
+    const mute = findAccountControl(scope, /^(?:un)?mute(?:\b|\s)/i);
+    const deafen = findAccountControl(scope, /^(?:un)?deafen(?:\b|\s)/i);
+    const settings = findAccountControl(scope, /^user settings(?:\b|\s)/i);
     if (!mute || !deafen || !settings) return;
 
     const accountPanel = findCommonAncestor([mute, deafen, settings]);
     if (!accountPanel) return;
 
-    const utilityControl = Array.from(channelRoot.querySelectorAll<HTMLElement>("[aria-label], [title]"))
-        .find(element => !accountPanel.contains(element) && /spotify|voice connected|disconnect|noise suppression|start an activity/i.test(getSemanticLabel(element)));
-
-    if (utilityControl) {
-        const utilityStack = findCommonAncestor([accountPanel, utilityControl]);
-        if (utilityStack && utilityStack !== channelRoot && !utilityStack.querySelector("nav"))
-            return utilityStack;
-    }
+    let utilityStack = accountPanel;
 
     for (let candidate = accountPanel.parentElement; candidate && candidate !== channelRoot; candidate = candidate.parentElement) {
-        if (!candidate.querySelector("nav")) return candidate;
+        const { height } = candidate.getBoundingClientRect();
+        const isTooTallForUtilityStack = height > Math.max(500, window.innerHeight * 0.65);
+        if (candidate === document.body || candidate.querySelector("nav, main, [role=main]") || isTooTallForUtilityStack) break;
+        utilityStack = candidate;
     }
+
+    return utilityStack;
 }
 
 function getDockHost() {
@@ -447,9 +446,9 @@ function findLayoutBranch(layout: HTMLElement, descendant: HTMLElement) {
     return branch.parentElement === layout ? branch : descendant;
 }
 
-function findMainRegion(serverNav: HTMLElement, channelNav: HTMLElement) {
+function findMainRegion(serverNav: HTMLElement | undefined, channelNav: HTMLElement | undefined) {
     return Array.from(document.querySelectorAll<HTMLElement>("main, [role=main]"))
-        .filter(element => !serverNav.contains(element) && !channelNav.contains(element))
+        .filter(element => !serverNav?.contains(element) && !channelNav?.contains(element))
         .map(element => {
             const rect = element.getBoundingClientRect();
             return { area: rect.width * rect.height, element };
@@ -484,17 +483,25 @@ function discoverLayout() {
     const serverNav = findFirst(SERVER_NAV_SELECTORS);
     const channelNav = findFirst(CHANNEL_NAV_SELECTORS);
 
-    if (!serverNav || !channelNav) return;
-
     const main = findMainRegion(serverNav, channelNav);
-    if (!main) return;
-
-    const serverRoot = resolveWidthOwner("servers", serverNav, channelNav, 72);
-    const channelRoot = resolveWidthOwner("channels", channelNav, serverNav, 240);
-    const layout = findCommonAncestor([serverRoot, channelRoot, main]);
+    const serverRoot = serverNav
+        ? resolveWidthOwner("servers", serverNav, channelNav, 72)
+        : undefined;
+    const channelRoot = channelNav
+        ? resolveWidthOwner("channels", channelNav, serverNav, 240)
+        : undefined;
 
     setRoot("servers", serverRoot);
     setRoot("channels", channelRoot);
+
+    if (!main) {
+        setRoot("layout", undefined);
+        setRoot("main", undefined);
+        return;
+    }
+
+    const layoutParts = [serverRoot, channelRoot, main].filter((element): element is HTMLElement => element != null);
+    const layout = layoutParts.length > 1 ? findCommonAncestor(layoutParts) : undefined;
 
     if (layout && layout !== document.body && layout !== document.documentElement) {
         setRoot("layout", layout);
