@@ -4,14 +4,52 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import definePlugin, { StartAt } from "@utils/types";
+import { definePluginSettings } from "@api/Settings";
+import definePlugin, { OptionType, StartAt } from "@utils/types";
+import { ContextMenuApi, createRoot, ExpressionPickerStore, Menu, React, useEffect } from "@webpack/common";
 
 const STYLE_ID = "vc-sidebar-collapse-style";
-const STORAGE_KEY = "vc-sidebar-collapse-focus";
 const FOCUS_ATTRIBUTE = "data-vc-sidebar-collapse-focus";
 const DOCK_ATTRIBUTE = "data-vc-sidebar-collapse-dock";
 const FOOTER_ATTRIBUTE = "data-vc-sidebar-collapse-footer";
 const DOCK_PLACEMENT_ATTRIBUTE = "data-vc-sidebar-collapse-dock-placement";
+const PICKER_OPEN_ATTRIBUTE = "data-vc-sidebar-collapse-picker-open";
+const PICKER_BEHAVIOR_ATTRIBUTE = "data-vc-sidebar-collapse-picker-behavior";
+const TOGGLE_HOST_ATTRIBUTE = "data-vc-sidebar-collapse-toggle-host";
+
+enum DockLocation {
+    Chat = "chat",
+    MemberList = "member",
+}
+
+enum PickerBehavior {
+    Overlay = "overlay",
+    ShiftLeft = "shift-left",
+}
+
+const settings = definePluginSettings({
+    focusEnabled: {
+        type: OptionType.BOOLEAN,
+        description: "Whether Focus Mode is enabled",
+        default: false,
+    },
+    dockLocation: {
+        type: OptionType.SELECT,
+        description: "Where to place the utility dock when the member list is available",
+        options: [
+            { label: "Member list", value: DockLocation.MemberList, default: true },
+            { label: "Chat", value: DockLocation.Chat },
+        ],
+    },
+    pickerBehavior: {
+        type: OptionType.SELECT,
+        description: "How the chat dock behaves while an expression picker is open",
+        options: [
+            { label: "Overlay", value: PickerBehavior.Overlay, default: true },
+            { label: "Shift left", value: PickerBehavior.ShiftLeft },
+        ],
+    },
+});
 
 const ROOT_ATTRIBUTES = {
     channels: "data-vc-sidebar-collapse-channels-root",
@@ -106,11 +144,21 @@ body[data-vc-sidebar-collapse-focus]
     color: white;
 }
 
-[data-vc-sidebar-collapse-toggle][data-vc-sidebar-collapse-fallback] {
+[data-vc-sidebar-collapse-toggle-host] {
+    display: contents;
+}
+
+[data-vc-sidebar-collapse-toggle-host][data-vc-sidebar-collapse-fallback] {
+    display: block;
     position: fixed;
     z-index: 10000;
     top: 8px;
     right: 88px;
+    margin: 0;
+}
+
+[data-vc-sidebar-collapse-toggle-host][data-vc-sidebar-collapse-fallback]
+    [data-vc-sidebar-collapse-toggle] {
     margin: 0;
     background: var(--background-floating, #111214);
     box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
@@ -126,13 +174,15 @@ body[data-vc-sidebar-collapse-focus]
     box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
 }
 
-[data-vc-sidebar-collapse-member-root] {
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-member-root] {
     display: flex !important;
     flex-direction: column !important;
     min-height: 0 !important;
 }
 
-[data-vc-sidebar-collapse-member-content] {
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-member-content] {
     flex: 1 1 auto !important;
     min-height: 0 !important;
 }
@@ -151,6 +201,17 @@ body[data-vc-sidebar-collapse-focus]
     width: min(280px, calc(100vw - 24px));
 }
 
+body[data-vc-sidebar-collapse-picker-open]
+    [data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="overlay"] {
+    z-index: 0;
+}
+
+body[data-vc-sidebar-collapse-picker-open]
+    [data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="shift-left"] {
+    right: min(520px, 58vw);
+    width: min(280px, calc(42vw - 24px));
+}
+
 [data-vc-sidebar-collapse-dock]
     > [data-vc-sidebar-collapse-footer] {
     box-sizing: border-box !important;
@@ -165,9 +226,10 @@ type RootKind = keyof typeof ROOT_ATTRIBUTES;
 let observer: MutationObserver | undefined;
 let refreshFrame: number | undefined;
 let style: HTMLStyleElement | undefined;
-let toggleButton: HTMLButtonElement | undefined;
 let waitingForDom = false;
 let dockHost: HTMLDivElement | undefined;
+let toggleHost: HTMLDivElement | undefined;
+let toggleRoot: ReturnType<typeof createRoot> | undefined;
 
 interface FooterRelocation {
     footer: HTMLElement;
@@ -270,12 +332,19 @@ function findFooterStack() {
 }
 
 function getDockHost() {
-    if (dockHost?.isConnected) return dockHost;
+    if (dockHost) {
+        if (!dockHost.isConnected) getOverlayRoot()?.append(dockHost);
+        return dockHost;
+    }
 
     dockHost = document.createElement("div");
     dockHost.setAttribute(DOCK_ATTRIBUTE, "");
-    document.body?.append(dockHost);
+    getOverlayRoot()?.append(dockHost);
     return dockHost;
+}
+
+function getOverlayRoot() {
+    return document.querySelector<HTMLElement>("#app-mount") ?? roots.layout ?? document.body;
 }
 
 function relocateFooter(footer: HTMLElement) {
@@ -334,13 +403,19 @@ function placeDockHost() {
     const host = dockHost;
     if (!host || !footerRelocation) return;
 
+    host.setAttribute(PICKER_BEHAVIOR_ATTRIBUTE, settings.store.pickerBehavior);
     const memberRoot = roots.member;
-    if (memberRoot?.isConnected && isVisibleRightColumn(memberRoot)) {
-        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, "member");
+    const useMemberList = settings.store.dockLocation === DockLocation.MemberList
+        && memberRoot?.isConnected
+        && isVisibleRightColumn(memberRoot);
+
+    if (useMemberList) {
+        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.MemberList);
         if (host.parentElement !== memberRoot) memberRoot.append(host);
     } else {
-        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, "chat");
-        if (host.parentElement !== document.body) document.body?.append(host);
+        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.Chat);
+        const overlayRoot = getOverlayRoot();
+        if (overlayRoot && host.parentElement !== overlayRoot) overlayRoot.append(host);
     }
 }
 
@@ -356,6 +431,9 @@ function updateFooterRelocation() {
         if (footerRelocation) discardRelocatedFooter();
         relocateFooter(discoveredFooter);
     }
+
+    if (footerRelocation && footerRelocation.footer.parentElement !== dockHost)
+        getDockHost().append(footerRelocation.footer);
 
     placeDockHost();
 }
@@ -487,56 +565,104 @@ function discoverMemberColumn() {
 }
 
 function isFocusEnabled() {
-    return document.body?.hasAttribute(FOCUS_ATTRIBUTE) ?? false;
+    return settings.store.focusEnabled;
 }
 
-function updateButtonState() {
-    const enabled = isFocusEnabled();
-    toggleButton?.setAttribute("aria-pressed", String(enabled));
-    if (toggleButton)
-        toggleButton.title = enabled ? "Disable Focus Mode" : "Enable Focus Mode";
+function FocusContextMenu() {
+    const { dockLocation, pickerBehavior } = settings.use(["dockLocation", "pickerBehavior"]);
+
+    return (
+        <Menu.Menu navId="vc-sidebar-collapse" onClose={ContextMenuApi.closeContextMenu}>
+            <Menu.MenuGroup label="Dock location">
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-member-list"
+                    group="vc-sidebar-collapse-location"
+                    label="Member list"
+                    checked={dockLocation === DockLocation.MemberList}
+                    action={() => settings.store.dockLocation = DockLocation.MemberList}
+                />
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-chat"
+                    group="vc-sidebar-collapse-location"
+                    label="Chat"
+                    checked={dockLocation === DockLocation.Chat}
+                    action={() => settings.store.dockLocation = DockLocation.Chat}
+                />
+            </Menu.MenuGroup>
+            <Menu.MenuSeparator />
+            <Menu.MenuGroup label="Picker behavior">
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-picker-overlay"
+                    group="vc-sidebar-collapse-picker"
+                    label="Overlay"
+                    checked={pickerBehavior === PickerBehavior.Overlay}
+                    action={() => settings.store.pickerBehavior = PickerBehavior.Overlay}
+                />
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-picker-shift"
+                    group="vc-sidebar-collapse-picker"
+                    label="Shift left"
+                    checked={pickerBehavior === PickerBehavior.ShiftLeft}
+                    action={() => settings.store.pickerBehavior = PickerBehavior.ShiftLeft}
+                />
+            </Menu.MenuGroup>
+        </Menu.Menu>
+    );
 }
 
-function toggleFocus() {
-    const { body } = document;
-    if (!body) return;
+function FocusControl() {
+    const { dockLocation, focusEnabled, pickerBehavior } = settings.use([
+        "dockLocation",
+        "focusEnabled",
+        "pickerBehavior",
+    ]);
+    const activePickerView = ExpressionPickerStore.useExpressionPickerStore(state => state.activeView);
 
-    const enabled = body.toggleAttribute(FOCUS_ATTRIBUTE);
-    try {
-        localStorage.setItem(STORAGE_KEY, String(enabled));
-    } catch (error) {
-        console.warn("[SidebarCollapse] Could not persist Focus Mode state", error);
-    }
-    updateButtonState();
-    scheduleRefresh();
+    useEffect(() => {
+        document.body?.toggleAttribute(FOCUS_ATTRIBUTE, focusEnabled);
+        document.body?.toggleAttribute(PICKER_OPEN_ATTRIBUTE, activePickerView != null);
+        scheduleRefresh();
+    }, [activePickerView, dockLocation, focusEnabled, pickerBehavior]);
+
+    return (
+        <button
+            type="button"
+            aria-label="Toggle Focus Mode"
+            aria-pressed={focusEnabled}
+            data-vc-sidebar-collapse-toggle=""
+            title={focusEnabled ? "Disable Focus Mode" : "Enable Focus Mode"}
+            onClick={() => settings.store.focusEnabled = !focusEnabled}
+            onContextMenu={event => ContextMenuApi.openContextMenu(event, FocusContextMenu)}
+        >
+            Focus
+        </button>
+    );
 }
 
-function createToggleButton() {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = "Focus";
-    button.setAttribute("aria-label", "Toggle Focus Mode");
-    button.setAttribute("data-vc-sidebar-collapse-toggle", "");
-    button.addEventListener("click", toggleFocus);
-    toggleButton = button;
-    updateButtonState();
-    return button;
+function getToggleHost() {
+    if (toggleHost) return toggleHost;
+
+    toggleHost = document.createElement("div");
+    toggleHost.setAttribute(TOGGLE_HOST_ATTRIBUTE, "");
+    toggleRoot = createRoot(toggleHost);
+    toggleRoot.render(<FocusControl />);
+    return toggleHost;
 }
 
 function placeToggleButton() {
     const { body } = document;
     if (!body) return;
 
-    const button = toggleButton ?? createToggleButton();
+    const host = getToggleHost();
     const anchor = findFirst(TOOLBAR_ANCHOR_SELECTORS);
 
     if (anchor?.parentElement) {
-        button.removeAttribute("data-vc-sidebar-collapse-fallback");
-        if (button.parentElement !== anchor.parentElement || button.nextElementSibling !== anchor)
-            anchor.parentElement.insertBefore(button, anchor);
+        host.removeAttribute("data-vc-sidebar-collapse-fallback");
+        if (host.parentElement !== anchor.parentElement || host.nextElementSibling !== anchor)
+            anchor.parentElement.insertBefore(host, anchor);
     } else {
-        button.setAttribute("data-vc-sidebar-collapse-fallback", "");
-        if (button.parentElement !== body) body.append(button);
+        host.setAttribute("data-vc-sidebar-collapse-fallback", "");
+        if (host.parentElement !== body) body.append(host);
     }
 }
 
@@ -566,22 +692,12 @@ function addStyle() {
     (document.head ?? document.documentElement).append(style);
 }
 
-function restoreFocusState() {
-    try {
-        if (localStorage.getItem(STORAGE_KEY) === "true")
-            document.body?.setAttribute(FOCUS_ATTRIBUTE, "");
-    } catch (error) {
-        console.warn("[SidebarCollapse] Could not restore Focus Mode state", error);
-    }
-}
-
 function initialize() {
     const { body } = document;
     if (!body) return;
 
     waitingForDom = false;
     addStyle();
-    restoreFocusState();
     refresh();
 
     observer?.disconnect();
@@ -596,10 +712,11 @@ function initialize() {
 
 export default definePlugin({
     name: "SidebarCollapse",
-    description: "Adds a Focus Mode that collapses Discord's server and channel columns.",
+    description: "Adds a Focus Mode that collapses Discord's sidebars and preserves the utility footer.",
     tags: ["Appearance"],
     authors: [{ name: "drind", id: 0n }],
     startAt: StartAt.DOMContentLoaded,
+    settings,
 
     start() {
         if (document.body) {
@@ -621,17 +738,19 @@ export default definePlugin({
         if (refreshFrame !== undefined) cancelAnimationFrame(refreshFrame);
         refreshFrame = undefined;
 
-        for (const kind of Object.keys(ROOT_ATTRIBUTES) as RootKind[])
-            setRoot(kind, undefined);
-
         restoreFooter();
         removeDockHost();
 
-        toggleButton?.removeEventListener("click", toggleFocus);
-        toggleButton?.remove();
-        toggleButton = undefined;
+        for (const kind of Object.keys(ROOT_ATTRIBUTES) as RootKind[])
+            setRoot(kind, undefined);
+
+        toggleRoot?.unmount();
+        toggleRoot = undefined;
+        toggleHost?.remove();
+        toggleHost = undefined;
 
         document.body?.removeAttribute(FOCUS_ATTRIBUTE);
+        document.body?.removeAttribute(PICKER_OPEN_ATTRIBUTE);
         style?.remove();
         style = undefined;
     },
