@@ -10,9 +10,9 @@ import { ContextMenuApi, createRoot, ExpressionPickerStore, Menu, React, useEffe
 
 const STYLE_ID = "vc-sidebar-collapse-style";
 const FOCUS_ATTRIBUTE = "data-vc-sidebar-collapse-focus";
-const DOCK_ATTRIBUTE = "data-vc-sidebar-collapse-dock";
 const FOOTER_ATTRIBUTE = "data-vc-sidebar-collapse-footer";
 const DOCK_PLACEMENT_ATTRIBUTE = "data-vc-sidebar-collapse-dock-placement";
+const MEMBER_DOCKED_ATTRIBUTE = "data-vc-sidebar-collapse-member-docked";
 const PICKER_OPEN_ATTRIBUTE = "data-vc-sidebar-collapse-picker-open";
 const PICKER_BEHAVIOR_ATTRIBUTE = "data-vc-sidebar-collapse-picker-behavior";
 const TOGGLE_HOST_ATTRIBUTE = "data-vc-sidebar-collapse-toggle-host";
@@ -52,6 +52,7 @@ const settings = definePluginSettings({
 });
 
 const ROOT_ATTRIBUTES = {
+    channelContent: "data-vc-sidebar-collapse-channel-content",
     channels: "data-vc-sidebar-collapse-channels-root",
     layout: "data-vc-sidebar-collapse-layout",
     main: "data-vc-sidebar-collapse-main",
@@ -70,13 +71,7 @@ const CHANNEL_NAV_SELECTORS = [
     'nav[aria-label*="Channels" i]',
     'nav[aria-label*="Direct Messages" i]',
     'nav[aria-label*="Friends" i]',
-] as const;
-
-const TOOLBAR_ANCHOR_SELECTORS = [
-    'button[aria-label*="Inbox" i]',
-    '[role="button"][aria-label*="Inbox" i]',
-    'button[aria-label*="Help" i]',
-    '[role="button"][aria-label*="Help" i]',
+    'nav[aria-label$="(server)" i]',
 ] as const;
 
 const CSS = `
@@ -93,6 +88,11 @@ const CSS = `
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-servers-root],
 body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-channel-content] {
+    display: none !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-channels-root] {
     box-sizing: border-box !important;
     width: 0 !important;
@@ -101,10 +101,7 @@ body[data-vc-sidebar-collapse-focus]
     flex: 0 0 0 !important;
     flex-basis: 0 !important;
     margin-inline: 0 !important;
-    overflow: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-    visibility: hidden !important;
+    overflow: visible !important;
 }
 
 [data-vc-sidebar-collapse-layout],
@@ -122,15 +119,15 @@ body[data-vc-sidebar-collapse-focus]
 
 [data-vc-sidebar-collapse-toggle] {
     box-sizing: border-box;
-    min-width: 32px;
-    height: 32px;
+    min-width: 28px;
+    height: 28px;
     margin: 0 4px;
-    padding: 0 8px;
+    padding: 0 6px;
     border: 0;
     border-radius: 4px;
     background: transparent;
     color: var(--interactive-normal, #b5bac1);
-    font: 600 12px/32px var(--font-primary, sans-serif);
+    font: 600 11px/28px var(--font-primary, sans-serif);
     cursor: pointer;
 }
 
@@ -145,80 +142,86 @@ body[data-vc-sidebar-collapse-focus]
 }
 
 [data-vc-sidebar-collapse-toggle-host] {
-    display: contents;
-}
-
-[data-vc-sidebar-collapse-toggle-host][data-vc-sidebar-collapse-fallback] {
-    display: block;
     position: fixed;
     z-index: 10000;
-    top: 8px;
+    top: 10px;
     right: 88px;
-    margin: 0;
 }
 
-[data-vc-sidebar-collapse-toggle-host][data-vc-sidebar-collapse-fallback]
+[data-vc-sidebar-collapse-toggle-host]
     [data-vc-sidebar-collapse-toggle] {
     margin: 0;
     background: var(--background-floating, #111214);
     box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
 }
 
-[data-vc-sidebar-collapse-dock] {
-    z-index: 2;
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer] {
+    position: fixed !important;
+    inset: auto !important;
+    z-index: 100;
     box-sizing: border-box;
     max-height: min(42vh, 320px);
-    overflow: auto;
+    margin: 0 !important;
+    overflow: auto !important;
     border-radius: 8px;
     background: var(--background-secondary-alt, #1e1f22);
     box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: none !important;
 }
 
 body[data-vc-sidebar-collapse-focus]
-    [data-vc-sidebar-collapse-member-root]:has(> [data-vc-sidebar-collapse-dock-placement="member"]) {
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-}
-
-body[data-vc-sidebar-collapse-focus]
-    [data-vc-sidebar-collapse-member-root]:has(> [data-vc-sidebar-collapse-dock-placement="member"])
-    > [data-vc-sidebar-collapse-member-content] {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-}
-
-[data-vc-sidebar-collapse-dock-placement="member"] {
-    position: relative;
-    flex: 0 0 auto;
-    width: 100%;
-    border-radius: 0;
-}
-
-[data-vc-sidebar-collapse-dock-placement="chat"] {
-    position: fixed;
-    right: 12px;
-    bottom: 12px;
-    width: min(280px, calc(100vw - 24px));
-}
-
-body[data-vc-sidebar-collapse-picker-open]
-    [data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="overlay"] {
-    z-index: 0;
-}
-
-body[data-vc-sidebar-collapse-picker-open]
-    [data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="shift-left"] {
-    right: min(520px, 58vw);
-    width: min(280px, calc(42vw - 24px));
-}
-
-[data-vc-sidebar-collapse-dock]
-    > [data-vc-sidebar-collapse-footer] {
+    [data-vc-sidebar-collapse-member-docked] {
     box-sizing: border-box !important;
-    width: 100% !important;
+    padding-bottom: var(--vc-sidebar-collapse-dock-height, 0px) !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"] {
+    left: var(--vc-sidebar-collapse-dock-left) !important;
+    right: auto !important;
+    bottom: var(--vc-sidebar-collapse-dock-bottom) !important;
+    width: var(--vc-sidebar-collapse-dock-width) !important;
     min-width: 0 !important;
     max-width: none !important;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"]
+    > * {
+    border-radius: 0 !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"]
+    > :last-child {
+    background: var(--background-secondary, #2b2d31) !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"] {
+    right: 12px !important;
+    bottom: 76px !important;
+    width: min(280px, calc(100vw - 24px)) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 24px) !important;
+}
+
+body[data-vc-sidebar-collapse-picker-open]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="overlay"] {
+    z-index: 1;
+}
+
+body[data-vc-sidebar-collapse-picker-open]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="shift-left"] {
+    right: min(520px, 58vw) !important;
+    width: min(280px, calc(42vw - 24px)) !important;
 }
 `;
 
@@ -228,18 +231,11 @@ let observer: MutationObserver | undefined;
 let refreshFrame: number | undefined;
 let style: HTMLStyleElement | undefined;
 let waitingForDom = false;
-let dockHost: HTMLDivElement | undefined;
 let toggleHost: HTMLDivElement | undefined;
 let toggleRoot: ReturnType<typeof createRoot> | undefined;
-
-interface FooterRelocation {
-    footer: HTMLElement;
-    originalParent: HTMLElement;
-    originalNextSibling: ChildNode | null;
-    placeholder: Comment;
-}
-
-let footerRelocation: FooterRelocation | undefined;
+let footerStack: HTMLElement | undefined;
+let footerResizeObserver: ResizeObserver | undefined;
+let dockedMemberRoot: HTMLElement | undefined;
 
 const roots: Partial<Record<RootKind, HTMLElement>> = {};
 
@@ -308,11 +304,10 @@ function findAccountControl(scope: HTMLElement, pattern: RegExp) {
 
 function findFooterStack() {
     const channelRoot = roots.channels?.isConnected ? roots.channels : undefined;
-    const scope = channelRoot ?? document.body;
 
-    const mute = findAccountControl(scope, /^(?:un)?mute(?:\b|\s)/i);
-    const deafen = findAccountControl(scope, /^(?:un)?deafen(?:\b|\s)/i);
-    const settings = findAccountControl(scope, /^user settings(?:\b|\s)/i);
+    const mute = findAccountControl(document.body, /^(?:un)?mute(?:\b|\s)/i);
+    const deafen = findAccountControl(document.body, /^(?:un)?deafen(?:\b|\s)/i);
+    const settings = findAccountControl(document.body, /^user settings(?:\b|\s)/i);
     if (!mute || !deafen || !settings) return;
 
     const accountPanel = findCommonAncestor([mute, deafen, settings]);
@@ -330,111 +325,76 @@ function findFooterStack() {
     return utilityStack;
 }
 
-function getDockHost() {
-    if (dockHost) {
-        if (!dockHost.isConnected) getOverlayRoot()?.append(dockHost);
-        return dockHost;
+function clearDockedMember() {
+    dockedMemberRoot?.removeAttribute(MEMBER_DOCKED_ATTRIBUTE);
+    dockedMemberRoot?.style.removeProperty("--vc-sidebar-collapse-dock-height");
+    dockedMemberRoot = undefined;
+}
+
+function clearFooterDock() {
+    footerResizeObserver?.disconnect();
+    footerResizeObserver = undefined;
+    clearDockedMember();
+
+    if (!footerStack) return;
+
+    footerStack.removeAttribute(FOOTER_ATTRIBUTE);
+    footerStack.removeAttribute(DOCK_PLACEMENT_ATTRIBUTE);
+    footerStack.removeAttribute(PICKER_BEHAVIOR_ATTRIBUTE);
+    footerStack.style.removeProperty("--vc-sidebar-collapse-dock-left");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-dock-bottom");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-dock-width");
+    footerStack = undefined;
+}
+
+function setFooterStack(footer: HTMLElement) {
+    if (footerStack === footer) return;
+
+    clearFooterDock();
+    footerStack = footer;
+    footerResizeObserver = new ResizeObserver(scheduleRefresh);
+    footerResizeObserver.observe(footer);
+}
+
+function updateFooterDock() {
+    if (!isFocusEnabled()) {
+        clearFooterDock();
+        return;
     }
 
-    dockHost = document.createElement("div");
-    dockHost.setAttribute(DOCK_ATTRIBUTE, "");
-    getOverlayRoot()?.append(dockHost);
-    return dockHost;
-}
-
-function getOverlayRoot() {
-    return document.querySelector<HTMLElement>("#app-mount") ?? roots.layout ?? document.body;
-}
-
-function relocateFooter(footer: HTMLElement) {
-    const originalParent = footer.parentElement;
-    if (!originalParent) return;
-
-    const placeholder = document.createComment("SidebarCollapse footer placeholder");
-    const originalNextSibling = footer.nextSibling;
-    originalParent.insertBefore(placeholder, footer);
-    footer.setAttribute(FOOTER_ATTRIBUTE, "");
-    getDockHost().append(footer);
-
-    footerRelocation = { footer, originalNextSibling, originalParent, placeholder };
-}
-
-function discardRelocatedFooter() {
-    const relocation = footerRelocation;
-    if (!relocation) return;
-
-    relocation.footer.removeAttribute(FOOTER_ATTRIBUTE);
-    relocation.footer.remove();
-    relocation.placeholder.remove();
-    footerRelocation = undefined;
-}
-
-function restoreFooter() {
-    const relocation = footerRelocation;
-    if (!relocation) return;
-
-    const { footer, originalNextSibling, originalParent, placeholder } = relocation;
-    footer.removeAttribute(FOOTER_ATTRIBUTE);
-
-    if (placeholder.isConnected) {
-        placeholder.replaceWith(footer);
-    } else if (originalParent.isConnected) {
-        originalParent.insertBefore(
-            footer,
-            originalNextSibling?.parentNode === originalParent ? originalNextSibling : null
-        );
-    } else if (roots.channels?.isConnected) {
-        roots.channels.append(footer);
-    } else {
-        footer.remove();
+    const discoveredFooter = findFooterStack();
+    if (discoveredFooter) setFooterStack(discoveredFooter);
+    if (!footerStack?.isConnected) {
+        clearFooterDock();
+        return;
     }
 
-    placeholder.remove();
-    footerRelocation = undefined;
-}
+    clearDockedMember();
+    footerStack.setAttribute(FOOTER_ATTRIBUTE, "");
+    footerStack.setAttribute(PICKER_BEHAVIOR_ATTRIBUTE, settings.store.pickerBehavior);
 
-function removeDockHost() {
-    dockHost?.remove();
-    dockHost = undefined;
-}
-
-function placeDockHost() {
-    const host = dockHost;
-    if (!host || !footerRelocation) return;
-
-    host.setAttribute(PICKER_BEHAVIOR_ATTRIBUTE, settings.store.pickerBehavior);
     const memberRoot = roots.member;
     const useMemberList = settings.store.dockLocation === DockLocation.MemberList
         && memberRoot?.isConnected
         && isVisibleRightColumn(memberRoot);
 
-    if (useMemberList) {
-        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.MemberList);
-        if (host.parentElement !== memberRoot) memberRoot.append(host);
-    } else {
-        host.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.Chat);
-        const overlayRoot = getOverlayRoot();
-        if (overlayRoot && host.parentElement !== overlayRoot) overlayRoot.append(host);
-    }
-}
-
-function updateFooterRelocation() {
-    if (!isFocusEnabled()) {
-        restoreFooter();
-        removeDockHost();
+    if (!useMemberList) {
+        footerStack.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.Chat);
+        footerStack.style.removeProperty("--vc-sidebar-collapse-dock-left");
+        footerStack.style.removeProperty("--vc-sidebar-collapse-dock-bottom");
+        footerStack.style.removeProperty("--vc-sidebar-collapse-dock-width");
         return;
     }
 
-    const discoveredFooter = findFooterStack();
-    if (discoveredFooter && discoveredFooter !== footerRelocation?.footer) {
-        if (footerRelocation) discardRelocatedFooter();
-        relocateFooter(discoveredFooter);
-    }
+    const memberRect = memberRoot.getBoundingClientRect();
+    footerStack.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.MemberList);
+    footerStack.style.setProperty("--vc-sidebar-collapse-dock-left", `${memberRect.left}px`);
+    footerStack.style.setProperty("--vc-sidebar-collapse-dock-bottom", `${window.innerHeight - memberRect.bottom}px`);
+    footerStack.style.setProperty("--vc-sidebar-collapse-dock-width", `${memberRect.width}px`);
 
-    if (footerRelocation && footerRelocation.footer.parentElement !== dockHost)
-        getDockHost().append(footerRelocation.footer);
-
-    placeDockHost();
+    dockedMemberRoot = memberRoot;
+    dockedMemberRoot.setAttribute(MEMBER_DOCKED_ATTRIBUTE, "");
+    dockedMemberRoot.style.setProperty("--vc-sidebar-collapse-dock-height", `${footerStack.getBoundingClientRect().height}px`);
 }
 
 function findLayoutBranch(layout: HTMLElement, descendant: HTMLElement) {
@@ -472,7 +432,7 @@ function setRoot(kind: RootKind, element: HTMLElement | undefined) {
     }
 }
 
-function resolveWidthOwner(kind: "servers" | "channels", nav: HTMLElement, otherNav: HTMLElement | undefined, expectedWidth: number) {
+function resolveWidthOwner(kind: "servers" | "channelContent", nav: HTMLElement, otherNav: HTMLElement | undefined, expectedWidth: number) {
     const existing = roots[kind];
     if (existing?.isConnected && existing.contains(nav)) return existing;
 
@@ -487,11 +447,19 @@ function discoverLayout() {
     const serverRoot = serverNav
         ? resolveWidthOwner("servers", serverNav, channelNav, 72)
         : undefined;
-    const channelRoot = channelNav
-        ? resolveWidthOwner("channels", channelNav, serverNav, 240)
+    const channelContent = channelNav
+        ? resolveWidthOwner("channelContent", channelNav, serverNav, 240)
         : undefined;
+    const footer = findFooterStack();
+    const channelShell = channelContent && footer
+        ? findCommonAncestor([channelContent, footer])
+        : undefined;
+    const channelRoot = channelShell && channelShell !== document.body && channelShell !== document.documentElement
+        ? channelShell
+        : channelContent;
 
     setRoot("servers", serverRoot);
+    setRoot("channelContent", channelContent);
     setRoot("channels", channelRoot);
 
     if (!main) {
@@ -661,16 +629,7 @@ function placeToggleButton() {
     if (!body) return;
 
     const host = getToggleHost();
-    const anchor = findFirst(TOOLBAR_ANCHOR_SELECTORS);
-
-    if (anchor?.parentElement) {
-        host.removeAttribute("data-vc-sidebar-collapse-fallback");
-        if (host.parentElement !== anchor.parentElement || host.nextElementSibling !== anchor)
-            anchor.parentElement.insertBefore(host, anchor);
-    } else {
-        host.setAttribute("data-vc-sidebar-collapse-fallback", "");
-        if (host.parentElement !== body) body.append(host);
-    }
+    if (host.parentElement !== body) body.append(host);
 }
 
 function refresh() {
@@ -679,7 +638,7 @@ function refresh() {
         discoverLayout();
         discoverMemberColumn();
         placeToggleButton();
-        updateFooterRelocation();
+        updateFooterDock();
     } catch (error) {
         console.error("[SidebarCollapse] Failed to refresh the Discord layout", error);
     }
@@ -715,6 +674,7 @@ function initialize() {
         childList: true,
         subtree: true,
     });
+    window.addEventListener("resize", scheduleRefresh);
 }
 
 export default definePlugin({
@@ -722,7 +682,7 @@ export default definePlugin({
     description: "Adds a Focus Mode that collapses Discord's sidebars and preserves the utility footer.",
     tags: ["Appearance"],
     authors: [{ name: "drind", id: 0n }],
-    startAt: StartAt.DOMContentLoaded,
+    startAt: StartAt.WebpackReady,
     settings,
 
     start() {
@@ -745,8 +705,8 @@ export default definePlugin({
         if (refreshFrame !== undefined) cancelAnimationFrame(refreshFrame);
         refreshFrame = undefined;
 
-        restoreFooter();
-        removeDockHost();
+        window.removeEventListener("resize", scheduleRefresh);
+        clearFooterDock();
 
         for (const kind of Object.keys(ROOT_ATTRIBUTES) as RootKind[])
             setRoot(kind, undefined);
