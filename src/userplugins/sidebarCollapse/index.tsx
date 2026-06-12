@@ -129,22 +129,22 @@ body[data-vc-sidebar-collapse-focus]
     border: 0;
     border-radius: 4px;
     background: transparent;
-    color: var(--interactive-normal, #b5bac1);
+    color: var(--vc-sidebar-collapse-toggle-color, #b5bac1);
     cursor: pointer;
 }
 
 [data-vc-sidebar-collapse-toggle] svg {
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
 }
 
 [data-vc-sidebar-collapse-toggle]:hover {
     background: var(--background-modifier-hover, rgb(255 255 255 / 8%));
-    color: var(--interactive-hover, #dbdee1);
+    color: var(--vc-sidebar-collapse-toggle-color, #b5bac1);
 }
 
 [data-vc-sidebar-collapse-toggle][aria-pressed="true"] {
-    color: var(--interactive-active, #f2f3f5);
+    color: var(--vc-sidebar-collapse-toggle-color, #b5bac1);
 }
 
 [data-vc-sidebar-collapse-toggle-host] {
@@ -552,20 +552,17 @@ function openPreferredRightColumn() {
         return;
     }
     if (roots.member?.isConnected && isVisibleRightColumn(roots.member)) {
-        lastRightColumnOpenKey = undefined;
         return;
     }
 
     const showRightColumn = Array.from(document.querySelectorAll<HTMLElement>("button, [role=button]"))
         .find(element => /^show (?:user profile|member list|members?)(?:\b|\s)/i.test(getSemanticLabel(element)));
-    if (!showRightColumn) return;
+    if (!showRightColumn || showRightColumn.getAttribute("aria-disabled") === "true") return;
 
     const openKey = location.pathname;
     if (lastRightColumnOpenKey === openKey) return;
     lastRightColumnOpenKey = openKey;
-
-    if (showRightColumn.getAttribute("aria-disabled") !== "true")
-        showRightColumn.click();
+    showRightColumn.click();
 }
 
 function isFocusEnabled() {
@@ -625,6 +622,7 @@ function FocusControl() {
     useEffect(() => {
         document.body?.toggleAttribute(FOCUS_ATTRIBUTE, focusEnabled);
         document.body?.toggleAttribute(PICKER_OPEN_ATTRIBUTE, activePickerView != null);
+        window.dispatchEvent(new Event("resize"));
         scheduleRefresh();
     }, [activePickerView, dockLocation, focusEnabled, pickerBehavior]);
 
@@ -665,6 +663,10 @@ function placeToggleButton() {
     if (!body) return;
 
     const host = getToggleHost();
+    const toolbarIcon = Array.from(document.querySelectorAll<HTMLElement>("button, [role=button]"))
+        .find(element => /^(?:inbox|help)$/i.test(getSemanticLabel(element)));
+    if (toolbarIcon)
+        host.style.setProperty("--vc-sidebar-collapse-toggle-color", getComputedStyle(toolbarIcon).color);
     if (host.parentElement !== body) body.append(host);
 }
 
@@ -721,6 +723,13 @@ export default definePlugin({
     authors: [{ name: "drind", id: 0n }],
     startAt: StartAt.WebpackReady,
     settings,
+    patches: [{
+        find: "showCallOrActivityPanel",
+        replacement: {
+            match: /window\.innerWidth>=1132/g,
+            replace: "$&||document.body.hasAttribute('data-vc-sidebar-collapse-focus')",
+        },
+    }],
 
     start() {
         if (document.body) {
