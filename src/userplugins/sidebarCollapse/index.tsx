@@ -119,16 +119,23 @@ body[data-vc-sidebar-collapse-focus]
 
 [data-vc-sidebar-collapse-toggle] {
     box-sizing: border-box;
-    min-width: 28px;
-    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
     margin: 0 4px;
-    padding: 0 6px;
+    padding: 0;
     border: 0;
     border-radius: 4px;
     background: transparent;
     color: var(--interactive-normal, #b5bac1);
-    font: 600 11px/28px var(--font-primary, sans-serif);
     cursor: pointer;
+}
+
+[data-vc-sidebar-collapse-toggle] svg {
+    width: 16px;
+    height: 16px;
 }
 
 [data-vc-sidebar-collapse-toggle]:hover {
@@ -137,22 +144,21 @@ body[data-vc-sidebar-collapse-focus]
 }
 
 [data-vc-sidebar-collapse-toggle][aria-pressed="true"] {
-    background: var(--brand-experiment, #5865f2);
-    color: white;
+    color: var(--interactive-active, #f2f3f5);
 }
 
 [data-vc-sidebar-collapse-toggle-host] {
     position: fixed;
     z-index: 10000;
-    top: 10px;
+    top: 4px;
     right: 88px;
 }
 
 [data-vc-sidebar-collapse-toggle-host]
     [data-vc-sidebar-collapse-toggle] {
     margin: 0;
-    background: var(--background-floating, #111214);
-    box-shadow: var(--elevation-high, 0 8px 16px rgb(0 0 0 / 24%));
+    background: transparent;
+    box-shadow: none;
 }
 
 body[data-vc-sidebar-collapse-focus]
@@ -201,7 +207,7 @@ body[data-vc-sidebar-collapse-focus]
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"]
     > :last-child {
-    background: var(--background-secondary, #2b2d31) !important;
+    background: var(--background-secondary-alt, #1e1f22) !important;
 }
 
 body[data-vc-sidebar-collapse-focus]
@@ -236,6 +242,7 @@ let toggleRoot: ReturnType<typeof createRoot> | undefined;
 let footerStack: HTMLElement | undefined;
 let footerResizeObserver: ResizeObserver | undefined;
 let dockedMemberRoot: HTMLElement | undefined;
+let lastRightColumnOpenKey: string | undefined;
 
 const roots: Partial<Record<RootKind, HTMLElement>> = {};
 
@@ -539,6 +546,28 @@ function discoverMemberColumn() {
     );
 }
 
+function openPreferredRightColumn() {
+    if (!isFocusEnabled() || settings.store.dockLocation !== DockLocation.MemberList) {
+        lastRightColumnOpenKey = undefined;
+        return;
+    }
+    if (roots.member?.isConnected && isVisibleRightColumn(roots.member)) {
+        lastRightColumnOpenKey = undefined;
+        return;
+    }
+
+    const showRightColumn = Array.from(document.querySelectorAll<HTMLElement>("button, [role=button]"))
+        .find(element => /^show (?:user profile|member list|members?)(?:\b|\s)/i.test(getSemanticLabel(element)));
+    if (!showRightColumn) return;
+
+    const openKey = location.pathname;
+    if (lastRightColumnOpenKey === openKey) return;
+    lastRightColumnOpenKey = openKey;
+
+    if (showRightColumn.getAttribute("aria-disabled") !== "true")
+        showRightColumn.click();
+}
+
 function isFocusEnabled() {
     return settings.store.focusEnabled;
 }
@@ -609,7 +638,14 @@ function FocusControl() {
             onClick={() => settings.store.focusEnabled = !focusEnabled}
             onContextMenu={event => ContextMenuApi.openContextMenu(event, FocusContextMenu)}
         >
-            Focus
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                    fill="currentColor"
+                    d={focusEnabled
+                        ? "M9 3H7v4H3v2h6V3Zm6 0v6h6V7h-4V3h-2ZM3 15v2h4v4h2v-6H3Zm12 0v6h2v-4h4v-2h-6Z"
+                        : "M5 3a2 2 0 0 0-2 2v4h2V5h4V3H5Zm10 0v2h4v4h2V5a2 2 0 0 0-2-2h-4ZM3 15v4a2 2 0 0 0 2 2h4v-2H5v-4H3Zm16 0v4h-4v2h4a2 2 0 0 0 2-2v-4h-2Z"}
+                />
+            </svg>
         </button>
     );
 }
@@ -638,6 +674,7 @@ function refresh() {
         discoverLayout();
         discoverMemberColumn();
         placeToggleButton();
+        openPreferredRightColumn();
         updateFooterDock();
     } catch (error) {
         console.error("[SidebarCollapse] Failed to refresh the Discord layout", error);
