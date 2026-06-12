@@ -12,6 +12,7 @@ const STYLE_ID = "vc-sidebar-collapse-style";
 const FOCUS_ATTRIBUTE = "data-vc-sidebar-collapse-focus";
 const FOOTER_ATTRIBUTE = "data-vc-sidebar-collapse-footer";
 const DOCK_PLACEMENT_ATTRIBUTE = "data-vc-sidebar-collapse-dock-placement";
+const CHAT_POSITION_ATTRIBUTE = "data-vc-sidebar-collapse-chat-position";
 const MEMBER_DOCKED_ATTRIBUTE = "data-vc-sidebar-collapse-member-docked";
 const PICKER_OPEN_ATTRIBUTE = "data-vc-sidebar-collapse-picker-open";
 const PICKER_BEHAVIOR_ATTRIBUTE = "data-vc-sidebar-collapse-picker-behavior";
@@ -21,6 +22,11 @@ const TOOLBAR_INBOX_ATTRIBUTE = "data-vc-sidebar-collapse-toolbar-inbox";
 enum DockLocation {
     Chat = "chat",
     MemberList = "member",
+}
+
+enum ChatPosition {
+    Bottom = "bottom",
+    Top = "top",
 }
 
 enum PickerBehavior {
@@ -40,6 +46,14 @@ const settings = definePluginSettings({
         options: [
             { label: "Member list", value: DockLocation.MemberList, default: true },
             { label: "Chat", value: DockLocation.Chat },
+        ],
+    },
+    chatPosition: {
+        type: OptionType.SELECT,
+        description: "Where to anchor the utility dock when it is floating over chat",
+        options: [
+            { label: "Bottom right", value: ChatPosition.Bottom, default: true },
+            { label: "Top right", value: ChatPosition.Top },
         ],
     },
     pickerBehavior: {
@@ -216,10 +230,21 @@ body[data-vc-sidebar-collapse-focus]
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"] {
     right: 12px !important;
-    bottom: 76px !important;
     width: min(280px, calc(100vw - 24px)) !important;
     min-width: 0 !important;
     max-width: calc(100vw - 24px) !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="bottom"] {
+    top: auto !important;
+    bottom: 76px !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="top"] {
+    top: 56px !important;
+    bottom: auto !important;
 }
 
 body[data-vc-sidebar-collapse-picker-open]
@@ -350,6 +375,7 @@ function clearFooterDock() {
 
     footerStack.removeAttribute(FOOTER_ATTRIBUTE);
     footerStack.removeAttribute(DOCK_PLACEMENT_ATTRIBUTE);
+    footerStack.removeAttribute(CHAT_POSITION_ATTRIBUTE);
     footerStack.removeAttribute(PICKER_BEHAVIOR_ATTRIBUTE);
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-left");
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-bottom");
@@ -381,6 +407,7 @@ function updateFooterDock() {
 
     clearDockedMember();
     footerStack.setAttribute(FOOTER_ATTRIBUTE, "");
+    footerStack.setAttribute(CHAT_POSITION_ATTRIBUTE, settings.store.chatPosition);
     footerStack.setAttribute(PICKER_BEHAVIOR_ATTRIBUTE, settings.store.pickerBehavior);
 
     const memberRoot = roots.member;
@@ -554,7 +581,11 @@ function isFocusEnabled() {
 }
 
 function FocusContextMenu() {
-    const { dockLocation, pickerBehavior } = settings.use(["dockLocation", "pickerBehavior"]);
+    const { chatPosition, dockLocation, pickerBehavior } = settings.use([
+        "chatPosition",
+        "dockLocation",
+        "pickerBehavior",
+    ]);
 
     return (
         <Menu.Menu navId="vc-sidebar-collapse" onClose={ContextMenuApi.closeContextMenu}>
@@ -572,6 +603,23 @@ function FocusContextMenu() {
                     label="Chat"
                     checked={dockLocation === DockLocation.Chat}
                     action={() => settings.store.dockLocation = DockLocation.Chat}
+                />
+            </Menu.MenuGroup>
+            <Menu.MenuSeparator />
+            <Menu.MenuGroup label="Chat position">
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-chat-bottom"
+                    group="vc-sidebar-collapse-chat-position"
+                    label="Bottom right"
+                    checked={chatPosition === ChatPosition.Bottom}
+                    action={() => settings.store.chatPosition = ChatPosition.Bottom}
+                />
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-chat-top"
+                    group="vc-sidebar-collapse-chat-position"
+                    label="Top right"
+                    checked={chatPosition === ChatPosition.Top}
+                    action={() => settings.store.chatPosition = ChatPosition.Top}
                 />
             </Menu.MenuGroup>
             <Menu.MenuSeparator />
@@ -596,7 +644,8 @@ function FocusContextMenu() {
 }
 
 function FocusControl() {
-    const { dockLocation, focusEnabled, pickerBehavior } = settings.use([
+    const { chatPosition, dockLocation, focusEnabled, pickerBehavior } = settings.use([
+        "chatPosition",
         "dockLocation",
         "focusEnabled",
         "pickerBehavior",
@@ -608,7 +657,7 @@ function FocusControl() {
         document.body?.toggleAttribute(PICKER_OPEN_ATTRIBUTE, activePickerView != null);
         window.dispatchEvent(new Event("resize"));
         scheduleRefresh();
-    }, [activePickerView, dockLocation, focusEnabled, pickerBehavior]);
+    }, [activePickerView, chatPosition, dockLocation, focusEnabled, pickerBehavior]);
 
     return (
         <button
