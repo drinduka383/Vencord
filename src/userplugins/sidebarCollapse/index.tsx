@@ -16,6 +16,7 @@ const MEMBER_DOCKED_ATTRIBUTE = "data-vc-sidebar-collapse-member-docked";
 const PICKER_OPEN_ATTRIBUTE = "data-vc-sidebar-collapse-picker-open";
 const PICKER_BEHAVIOR_ATTRIBUTE = "data-vc-sidebar-collapse-picker-behavior";
 const TOGGLE_HOST_ATTRIBUTE = "data-vc-sidebar-collapse-toggle-host";
+const TOOLBAR_INBOX_ATTRIBUTE = "data-vc-sidebar-collapse-toolbar-inbox";
 
 enum DockLocation {
     Chat = "chat",
@@ -134,8 +135,8 @@ body[data-vc-sidebar-collapse-focus]
 }
 
 [data-vc-sidebar-collapse-toggle] svg {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
 }
 
 [data-vc-sidebar-collapse-toggle]:hover {
@@ -150,8 +151,6 @@ body[data-vc-sidebar-collapse-focus]
 [data-vc-sidebar-collapse-toggle-host] {
     position: fixed;
     z-index: 10000;
-    top: 4px;
-    right: 88px;
 }
 
 [data-vc-sidebar-collapse-toggle-host]
@@ -159,6 +158,10 @@ body[data-vc-sidebar-collapse-focus]
     margin: 0;
     background: transparent;
     box-shadow: none;
+}
+
+[data-vc-sidebar-collapse-toolbar-inbox] {
+    transform: translateX(-36px);
 }
 
 body[data-vc-sidebar-collapse-focus]
@@ -242,7 +245,7 @@ let toggleRoot: ReturnType<typeof createRoot> | undefined;
 let footerStack: HTMLElement | undefined;
 let footerResizeObserver: ResizeObserver | undefined;
 let dockedMemberRoot: HTMLElement | undefined;
-let lastRightColumnOpenKey: string | undefined;
+let toolbarInbox: HTMLElement | undefined;
 
 const roots: Partial<Record<RootKind, HTMLElement>> = {};
 
@@ -546,25 +549,6 @@ function discoverMemberColumn() {
     );
 }
 
-function openPreferredRightColumn() {
-    if (!isFocusEnabled() || settings.store.dockLocation !== DockLocation.MemberList) {
-        lastRightColumnOpenKey = undefined;
-        return;
-    }
-    if (roots.member?.isConnected && isVisibleRightColumn(roots.member)) {
-        return;
-    }
-
-    const showRightColumn = Array.from(document.querySelectorAll<HTMLElement>("button, [role=button]"))
-        .find(element => /^show (?:user profile|member list|members?)(?:\b|\s)/i.test(getSemanticLabel(element)));
-    if (!showRightColumn || showRightColumn.getAttribute("aria-disabled") === "true") return;
-
-    const openKey = location.pathname;
-    if (lastRightColumnOpenKey === openKey) return;
-    lastRightColumnOpenKey = openKey;
-    showRightColumn.click();
-}
-
 function isFocusEnabled() {
     return settings.store.focusEnabled;
 }
@@ -663,10 +647,24 @@ function placeToggleButton() {
     if (!body) return;
 
     const host = getToggleHost();
-    const toolbarIcon = Array.from(document.querySelectorAll<HTMLElement>("button, [role=button]"))
-        .find(element => /^(?:inbox|help)$/i.test(getSemanticLabel(element)));
-    if (toolbarIcon)
-        host.style.setProperty("--vc-sidebar-collapse-toggle-color", getComputedStyle(toolbarIcon).color);
+    const toolbarButtons = Array.from(document.querySelectorAll<HTMLElement>("button, [role=button]"));
+    const inbox = toolbarButtons.find(element => /^inbox$/i.test(getSemanticLabel(element)));
+    const help = toolbarButtons.find(element => /^help$/i.test(getSemanticLabel(element)));
+
+    if (toolbarInbox !== inbox) {
+        toolbarInbox?.removeAttribute(TOOLBAR_INBOX_ATTRIBUTE);
+        toolbarInbox = inbox;
+    }
+
+    if (inbox && help) {
+        const helpRect = help.getBoundingClientRect();
+
+        inbox.setAttribute(TOOLBAR_INBOX_ATTRIBUTE, "");
+        host.style.left = `${helpRect.left - 36}px`;
+        host.style.top = `${helpRect.top}px`;
+        host.style.setProperty("--vc-sidebar-collapse-toggle-color", getComputedStyle(inbox).color);
+    }
+
     if (host.parentElement !== body) body.append(host);
 }
 
@@ -676,7 +674,6 @@ function refresh() {
         discoverLayout();
         discoverMemberColumn();
         placeToggleButton();
-        openPreferredRightColumn();
         updateFooterDock();
     } catch (error) {
         console.error("[SidebarCollapse] Failed to refresh the Discord layout", error);
@@ -761,6 +758,8 @@ export default definePlugin({
         toggleRoot = undefined;
         toggleHost?.remove();
         toggleHost = undefined;
+        toolbarInbox?.removeAttribute(TOOLBAR_INBOX_ATTRIBUTE);
+        toolbarInbox = undefined;
 
         document.body?.removeAttribute(FOCUS_ATTRIBUTE);
         document.body?.removeAttribute(PICKER_OPEN_ATTRIBUTE);
