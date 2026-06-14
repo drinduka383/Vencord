@@ -13,6 +13,7 @@ const FOCUS_ATTRIBUTE = "data-vc-sidebar-collapse-focus";
 const FOOTER_ATTRIBUTE = "data-vc-sidebar-collapse-footer";
 const DOCK_PLACEMENT_ATTRIBUTE = "data-vc-sidebar-collapse-dock-placement";
 const CHAT_POSITION_ATTRIBUTE = "data-vc-sidebar-collapse-chat-position";
+const ACCOUNT_PANEL_ATTRIBUTE = "data-vc-sidebar-collapse-account-panel";
 const MEMBER_DOCKED_ATTRIBUTE = "data-vc-sidebar-collapse-member-docked";
 const PICKER_OPEN_ATTRIBUTE = "data-vc-sidebar-collapse-picker-open";
 const PICKER_BEHAVIOR_ATTRIBUTE = "data-vc-sidebar-collapse-picker-behavior";
@@ -243,8 +244,22 @@ body[data-vc-sidebar-collapse-focus]
 
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="top"] {
-    top: 56px !important;
+    top: var(--vc-sidebar-collapse-chat-top, 78px) !important;
     bottom: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="top"]
+    > [data-vc-sidebar-collapse-account-panel] {
+    order: -1;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="top"]
+    > #vc-spotify-player {
+    order: 1;
 }
 
 body[data-vc-sidebar-collapse-picker-open]
@@ -268,6 +283,7 @@ let waitingForDom = false;
 let toggleHost: HTMLDivElement | undefined;
 let toggleRoot: ReturnType<typeof createRoot> | undefined;
 let footerStack: HTMLElement | undefined;
+let footerAccountPanel: HTMLElement | undefined;
 let footerResizeObserver: ResizeObserver | undefined;
 let dockedMemberRoot: HTMLElement | undefined;
 let toolbarInbox: HTMLElement | undefined;
@@ -337,7 +353,7 @@ function findAccountControl(scope: HTMLElement, pattern: RegExp) {
         .find(element => pattern.test(getSemanticLabel(element)));
 }
 
-function findFooterStack() {
+function findFooterElements() {
     const channelRoot = roots.channels?.isConnected ? roots.channels : undefined;
 
     const mute = findAccountControl(document.body, /^(?:un)?mute(?:\b|\s)/i);
@@ -348,6 +364,9 @@ function findFooterStack() {
     const accountPanel = findCommonAncestor([mute, deafen, settings]);
     if (!accountPanel) return;
 
+    if (footerStack?.isConnected && footerStack.contains(accountPanel))
+        return { accountPanel, stack: footerStack };
+
     let utilityStack = accountPanel;
 
     for (let candidate = accountPanel.parentElement; candidate && candidate !== channelRoot; candidate = candidate.parentElement) {
@@ -357,7 +376,7 @@ function findFooterStack() {
         utilityStack = candidate;
     }
 
-    return utilityStack;
+    return { accountPanel, stack: utilityStack };
 }
 
 function clearDockedMember() {
@@ -373,6 +392,8 @@ function clearFooterDock() {
 
     if (!footerStack) return;
 
+    footerAccountPanel?.removeAttribute(ACCOUNT_PANEL_ATTRIBUTE);
+    footerAccountPanel = undefined;
     footerStack.removeAttribute(FOOTER_ATTRIBUTE);
     footerStack.removeAttribute(DOCK_PLACEMENT_ATTRIBUTE);
     footerStack.removeAttribute(CHAT_POSITION_ATTRIBUTE);
@@ -380,16 +401,49 @@ function clearFooterDock() {
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-left");
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-bottom");
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-width");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-chat-top");
     footerStack = undefined;
 }
 
-function setFooterStack(footer: HTMLElement) {
-    if (footerStack === footer) return;
+function setFooterStack(footer: HTMLElement, accountPanel: HTMLElement) {
+    const accountPanelItem = footer === accountPanel
+        ? accountPanel
+        : findLayoutBranch(footer, accountPanel);
+
+    if (footerStack === footer) {
+        if (footerAccountPanel !== accountPanelItem) {
+            footerAccountPanel?.removeAttribute(ACCOUNT_PANEL_ATTRIBUTE);
+            footerAccountPanel = accountPanelItem;
+            footerAccountPanel.setAttribute(ACCOUNT_PANEL_ATTRIBUTE, "");
+        }
+        return;
+    }
 
     clearFooterDock();
     footerStack = footer;
+    footerAccountPanel = accountPanelItem;
+    footerAccountPanel.setAttribute(ACCOUNT_PANEL_ATTRIBUTE, "");
     footerResizeObserver = new ResizeObserver(scheduleRefresh);
     footerResizeObserver.observe(footer);
+}
+
+function getChatTopOffset() {
+    const toolbarControl = Array.from(document.querySelectorAll<HTMLElement>("button, [role=button]"))
+        .find(element => /^(?:help|inbox)$/i.test(getSemanticLabel(element)));
+    let toolbar: HTMLElement | null = toolbarControl ?? null;
+
+    for (let depth = 0; toolbar && toolbar !== document.body && depth < 8; depth++) {
+        const rect = toolbar.getBoundingClientRect();
+        if (rect.top < 100
+            && rect.height >= 32
+            && rect.height <= 100
+            && rect.width >= Math.min(320, window.innerWidth * 0.4))
+            return Math.max(78, Math.ceil(rect.bottom + 18));
+
+        toolbar = toolbar.parentElement;
+    }
+
+    return 78;
 }
 
 function updateFooterDock() {
@@ -398,8 +452,8 @@ function updateFooterDock() {
         return;
     }
 
-    const discoveredFooter = findFooterStack();
-    if (discoveredFooter) setFooterStack(discoveredFooter);
+    const discoveredFooter = findFooterElements();
+    if (discoveredFooter) setFooterStack(discoveredFooter.stack, discoveredFooter.accountPanel);
     if (!footerStack?.isConnected) {
         clearFooterDock();
         return;
@@ -417,6 +471,7 @@ function updateFooterDock() {
 
     if (!useMemberList) {
         footerStack.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.Chat);
+        footerStack.style.setProperty("--vc-sidebar-collapse-chat-top", `${getChatTopOffset()}px`);
         footerStack.style.removeProperty("--vc-sidebar-collapse-dock-left");
         footerStack.style.removeProperty("--vc-sidebar-collapse-dock-bottom");
         footerStack.style.removeProperty("--vc-sidebar-collapse-dock-width");
@@ -425,6 +480,7 @@ function updateFooterDock() {
 
     const memberRect = memberRoot.getBoundingClientRect();
     footerStack.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.MemberList);
+    footerStack.style.removeProperty("--vc-sidebar-collapse-chat-top");
     footerStack.style.setProperty("--vc-sidebar-collapse-dock-left", `${memberRect.left}px`);
     footerStack.style.setProperty("--vc-sidebar-collapse-dock-bottom", `${window.innerHeight - memberRect.bottom}px`);
     footerStack.style.setProperty("--vc-sidebar-collapse-dock-width", `${memberRect.width}px`);
@@ -487,7 +543,7 @@ function discoverLayout() {
     const channelContent = channelNav
         ? resolveWidthOwner("channelContent", channelNav, serverNav, 240)
         : undefined;
-    const footer = findFooterStack();
+    const footer = findFooterElements()?.stack;
     const channelShell = channelContent && footer
         ? findCommonAncestor([channelContent, footer])
         : undefined;
