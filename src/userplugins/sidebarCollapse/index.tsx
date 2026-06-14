@@ -15,8 +15,8 @@ const DOCK_PLACEMENT_ATTRIBUTE = "data-vc-sidebar-collapse-dock-placement";
 const CHAT_POSITION_ATTRIBUTE = "data-vc-sidebar-collapse-chat-position";
 const ACCOUNT_PANEL_ATTRIBUTE = "data-vc-sidebar-collapse-account-panel";
 const MEMBER_DOCKED_ATTRIBUTE = "data-vc-sidebar-collapse-member-docked";
+const MEMBER_POSITION_ATTRIBUTE = "data-vc-sidebar-collapse-member-position";
 const PICKER_OPEN_ATTRIBUTE = "data-vc-sidebar-collapse-picker-open";
-const PICKER_BEHAVIOR_ATTRIBUTE = "data-vc-sidebar-collapse-picker-behavior";
 const TOGGLE_HOST_ATTRIBUTE = "data-vc-sidebar-collapse-toggle-host";
 const TOOLBAR_INBOX_ATTRIBUTE = "data-vc-sidebar-collapse-toolbar-inbox";
 
@@ -30,9 +30,9 @@ enum ChatPosition {
     Top = "top",
 }
 
-enum PickerBehavior {
-    Overlay = "overlay",
-    ShiftLeft = "shift-left",
+enum MemberPosition {
+    Bottom = "bottom",
+    Top = "top",
 }
 
 const settings = definePluginSettings({
@@ -43,26 +43,26 @@ const settings = definePluginSettings({
     },
     dockLocation: {
         type: OptionType.SELECT,
-        description: "Where to place the utility dock when the member list is available",
+        description: "Whether the utility dock uses the member list or floats over chat",
         options: [
             { label: "Member list", value: DockLocation.MemberList, default: true },
-            { label: "Chat", value: DockLocation.Chat },
+            { label: "Floating over chat", value: DockLocation.Chat },
+        ],
+    },
+    memberPosition: {
+        type: OptionType.SELECT,
+        description: "Which edge of the member list holds the utility dock",
+        options: [
+            { label: "Bottom", value: MemberPosition.Bottom, default: true },
+            { label: "Top", value: MemberPosition.Top },
         ],
     },
     chatPosition: {
         type: OptionType.SELECT,
-        description: "Where to anchor the utility dock when it is floating over chat",
+        description: "Which corner of the chat area holds the floating utility dock",
         options: [
             { label: "Bottom right", value: ChatPosition.Bottom, default: true },
             { label: "Top right", value: ChatPosition.Top },
-        ],
-    },
-    pickerBehavior: {
-        type: OptionType.SELECT,
-        description: "How the chat dock behaves while an expression picker is open",
-        options: [
-            { label: "Overlay", value: PickerBehavior.Overlay, default: true },
-            { label: "Shift left", value: PickerBehavior.ShiftLeft },
         ],
     },
 });
@@ -198,22 +198,39 @@ body[data-vc-sidebar-collapse-focus]
 }
 
 body[data-vc-sidebar-collapse-focus]
-    [data-vc-sidebar-collapse-member-docked] {
+    [data-vc-sidebar-collapse-member-docked][data-vc-sidebar-collapse-member-position="bottom"] {
     box-sizing: border-box !important;
     padding-bottom: var(--vc-sidebar-collapse-dock-height, 0px) !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-member-docked][data-vc-sidebar-collapse-member-position="top"] {
+    box-sizing: border-box !important;
+    padding-top: var(--vc-sidebar-collapse-dock-height, 0px) !important;
 }
 
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"] {
     left: var(--vc-sidebar-collapse-dock-left) !important;
     right: auto !important;
-    bottom: var(--vc-sidebar-collapse-dock-bottom) !important;
     width: var(--vc-sidebar-collapse-dock-width) !important;
     min-width: 0 !important;
     max-width: none !important;
     border-radius: 0;
     background: transparent;
     box-shadow: none;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"][data-vc-sidebar-collapse-member-position="bottom"] {
+    top: auto !important;
+    bottom: var(--vc-sidebar-collapse-dock-bottom) !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"][data-vc-sidebar-collapse-member-position="top"] {
+    top: var(--vc-sidebar-collapse-dock-top) !important;
+    bottom: auto !important;
 }
 
 body[data-vc-sidebar-collapse-focus]
@@ -230,10 +247,10 @@ body[data-vc-sidebar-collapse-focus]
 
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"] {
-    right: 12px !important;
-    width: min(280px, calc(100vw - 24px)) !important;
+    right: var(--vc-sidebar-collapse-chat-right, 12px) !important;
+    width: min(280px, var(--vc-sidebar-collapse-chat-max-width, calc(100vw - 24px))) !important;
     min-width: 0 !important;
-    max-width: calc(100vw - 24px) !important;
+    max-width: var(--vc-sidebar-collapse-chat-max-width, calc(100vw - 24px)) !important;
 }
 
 body[data-vc-sidebar-collapse-focus]
@@ -266,14 +283,8 @@ body[data-vc-sidebar-collapse-focus]
 }
 
 body[data-vc-sidebar-collapse-picker-open]
-    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="overlay"] {
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"] {
     z-index: 1;
-}
-
-body[data-vc-sidebar-collapse-picker-open]
-    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-picker-behavior="shift-left"] {
-    right: min(520px, 58vw) !important;
-    width: min(280px, calc(42vw - 24px)) !important;
 }
 `;
 
@@ -384,7 +395,10 @@ function findFooterElements() {
 
 function clearDockedMember() {
     dockedMemberRoot?.removeAttribute(MEMBER_DOCKED_ATTRIBUTE);
+    dockedMemberRoot?.removeAttribute(MEMBER_POSITION_ATTRIBUTE);
     dockedMemberRoot?.style.removeProperty("--vc-sidebar-collapse-dock-height");
+    dockedMemberRoot?.style.removeProperty("padding-top");
+    dockedMemberRoot?.style.removeProperty("padding-bottom");
     dockedMemberRoot = undefined;
 }
 
@@ -400,11 +414,14 @@ function clearFooterDock() {
     footerStack.removeAttribute(FOOTER_ATTRIBUTE);
     footerStack.removeAttribute(DOCK_PLACEMENT_ATTRIBUTE);
     footerStack.removeAttribute(CHAT_POSITION_ATTRIBUTE);
-    footerStack.removeAttribute(PICKER_BEHAVIOR_ATTRIBUTE);
+    footerStack.removeAttribute(MEMBER_POSITION_ATTRIBUTE);
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-left");
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-bottom");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-dock-top");
     footerStack.style.removeProperty("--vc-sidebar-collapse-dock-width");
     footerStack.style.removeProperty("--vc-sidebar-collapse-chat-top");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-chat-right");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-chat-max-width");
     footerStack = undefined;
 }
 
@@ -465,18 +482,25 @@ function updateFooterDock() {
     clearDockedMember();
     footerStack.setAttribute(FOOTER_ATTRIBUTE, "");
     footerStack.setAttribute(CHAT_POSITION_ATTRIBUTE, settings.store.chatPosition);
-    footerStack.setAttribute(PICKER_BEHAVIOR_ATTRIBUTE, settings.store.pickerBehavior);
+    footerStack.setAttribute(MEMBER_POSITION_ATTRIBUTE, settings.store.memberPosition);
 
     const memberRoot = roots.member;
+    const memberListVisible = memberRoot?.isConnected && isVisibleRightColumn(memberRoot);
     const useMemberList = settings.store.dockLocation === DockLocation.MemberList
-        && memberRoot?.isConnected
-        && isVisibleRightColumn(memberRoot);
+        && memberListVisible;
 
     if (!useMemberList) {
+        const memberRect = memberListVisible ? memberRoot.getBoundingClientRect() : undefined;
+        const chatRight = memberRect ? window.innerWidth - memberRect.left + 12 : 12;
+        const chatMaxWidth = memberRect ? memberRect.left - 24 : window.innerWidth - 24;
+
         footerStack.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.Chat);
         footerStack.style.setProperty("--vc-sidebar-collapse-chat-top", `${getChatTopOffset()}px`);
+        footerStack.style.setProperty("--vc-sidebar-collapse-chat-right", `${chatRight}px`);
+        footerStack.style.setProperty("--vc-sidebar-collapse-chat-max-width", `${Math.max(0, chatMaxWidth)}px`);
         footerStack.style.removeProperty("--vc-sidebar-collapse-dock-left");
         footerStack.style.removeProperty("--vc-sidebar-collapse-dock-bottom");
+        footerStack.style.removeProperty("--vc-sidebar-collapse-dock-top");
         footerStack.style.removeProperty("--vc-sidebar-collapse-dock-width");
         return;
     }
@@ -484,12 +508,16 @@ function updateFooterDock() {
     const memberRect = memberRoot.getBoundingClientRect();
     footerStack.setAttribute(DOCK_PLACEMENT_ATTRIBUTE, DockLocation.MemberList);
     footerStack.style.removeProperty("--vc-sidebar-collapse-chat-top");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-chat-right");
+    footerStack.style.removeProperty("--vc-sidebar-collapse-chat-max-width");
     footerStack.style.setProperty("--vc-sidebar-collapse-dock-left", `${memberRect.left}px`);
     footerStack.style.setProperty("--vc-sidebar-collapse-dock-bottom", `${window.innerHeight - memberRect.bottom}px`);
+    footerStack.style.setProperty("--vc-sidebar-collapse-dock-top", `${memberRect.top}px`);
     footerStack.style.setProperty("--vc-sidebar-collapse-dock-width", `${memberRect.width}px`);
 
     dockedMemberRoot = memberRoot;
     dockedMemberRoot.setAttribute(MEMBER_DOCKED_ATTRIBUTE, "");
+    dockedMemberRoot.setAttribute(MEMBER_POSITION_ATTRIBUTE, settings.store.memberPosition);
     dockedMemberRoot.style.setProperty("--vc-sidebar-collapse-dock-height", `${footerStack.getBoundingClientRect().height}px`);
 }
 
@@ -640,15 +668,15 @@ function isFocusEnabled() {
 }
 
 function FocusContextMenu() {
-    const { chatPosition, dockLocation, pickerBehavior } = settings.use([
+    const { chatPosition, dockLocation, memberPosition } = settings.use([
         "chatPosition",
         "dockLocation",
-        "pickerBehavior",
+        "memberPosition",
     ]);
 
     return (
         <Menu.Menu navId="vc-sidebar-collapse" onClose={ContextMenuApi.closeContextMenu}>
-            <Menu.MenuGroup label="Dock location">
+            <Menu.MenuGroup label="Placement">
                 <Menu.MenuRadioItem
                     id="vc-sidebar-collapse-member-list"
                     group="vc-sidebar-collapse-location"
@@ -659,13 +687,30 @@ function FocusContextMenu() {
                 <Menu.MenuRadioItem
                     id="vc-sidebar-collapse-chat"
                     group="vc-sidebar-collapse-location"
-                    label="Chat"
+                    label="Floating over chat"
                     checked={dockLocation === DockLocation.Chat}
                     action={() => settings.store.dockLocation = DockLocation.Chat}
                 />
             </Menu.MenuGroup>
             <Menu.MenuSeparator />
-            <Menu.MenuGroup label="Chat position">
+            <Menu.MenuGroup label="Member list position">
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-member-bottom"
+                    group="vc-sidebar-collapse-member-position"
+                    label="Bottom"
+                    checked={memberPosition === MemberPosition.Bottom}
+                    action={() => settings.store.memberPosition = MemberPosition.Bottom}
+                />
+                <Menu.MenuRadioItem
+                    id="vc-sidebar-collapse-member-top"
+                    group="vc-sidebar-collapse-member-position"
+                    label="Top"
+                    checked={memberPosition === MemberPosition.Top}
+                    action={() => settings.store.memberPosition = MemberPosition.Top}
+                />
+            </Menu.MenuGroup>
+            <Menu.MenuSeparator />
+            <Menu.MenuGroup label="Floating position">
                 <Menu.MenuRadioItem
                     id="vc-sidebar-collapse-chat-bottom"
                     group="vc-sidebar-collapse-chat-position"
@@ -681,33 +726,16 @@ function FocusContextMenu() {
                     action={() => settings.store.chatPosition = ChatPosition.Top}
                 />
             </Menu.MenuGroup>
-            <Menu.MenuSeparator />
-            <Menu.MenuGroup label="Picker behavior">
-                <Menu.MenuRadioItem
-                    id="vc-sidebar-collapse-picker-overlay"
-                    group="vc-sidebar-collapse-picker"
-                    label="Overlay"
-                    checked={pickerBehavior === PickerBehavior.Overlay}
-                    action={() => settings.store.pickerBehavior = PickerBehavior.Overlay}
-                />
-                <Menu.MenuRadioItem
-                    id="vc-sidebar-collapse-picker-shift"
-                    group="vc-sidebar-collapse-picker"
-                    label="Shift left"
-                    checked={pickerBehavior === PickerBehavior.ShiftLeft}
-                    action={() => settings.store.pickerBehavior = PickerBehavior.ShiftLeft}
-                />
-            </Menu.MenuGroup>
         </Menu.Menu>
     );
 }
 
 function FocusControl() {
-    const { chatPosition, dockLocation, focusEnabled, pickerBehavior } = settings.use([
+    const { chatPosition, dockLocation, focusEnabled, memberPosition } = settings.use([
         "chatPosition",
         "dockLocation",
         "focusEnabled",
-        "pickerBehavior",
+        "memberPosition",
     ]);
     const activePickerView = ExpressionPickerStore.useExpressionPickerStore(state => state.activeView);
 
@@ -716,7 +744,7 @@ function FocusControl() {
         document.body?.toggleAttribute(PICKER_OPEN_ATTRIBUTE, activePickerView != null);
         window.dispatchEvent(new Event("resize"));
         scheduleRefresh();
-    }, [activePickerView, chatPosition, dockLocation, focusEnabled, pickerBehavior]);
+    }, [activePickerView, chatPosition, dockLocation, focusEnabled, memberPosition]);
 
     return (
         <button
