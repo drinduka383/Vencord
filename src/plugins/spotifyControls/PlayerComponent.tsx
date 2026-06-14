@@ -218,6 +218,10 @@ function SpotifySeekBar() {
 
 function AlbumContextMenu({ track }: { track: Track; }) {
     const volume = useStateFromStores([SpotifyStore], () => SpotifyStore.volume);
+    const setVolume = React.useMemo(
+        () => debounce((value: number) => SpotifyStore.setVolume(value)),
+        []
+    );
 
     return (
         <Menu.Menu
@@ -251,7 +255,7 @@ function AlbumContextMenu({ track }: { track: Track; }) {
                         value={volume}
                         minValue={0}
                         maxValue={100}
-                        onChange={debounce((v: number) => SpotifyStore.setVolume(v))}
+                        onChange={setVolume}
                     />
                 )}
             />
