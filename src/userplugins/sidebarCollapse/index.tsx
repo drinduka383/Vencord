@@ -244,7 +244,7 @@ body[data-vc-sidebar-collapse-focus]
 
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="top"] {
-    top: var(--vc-sidebar-collapse-chat-top, 78px) !important;
+    top: var(--vc-sidebar-collapse-chat-top, 82px) !important;
     bottom: auto !important;
     display: flex !important;
     flex-direction: column !important;
@@ -260,6 +260,9 @@ body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="top"]
     > #vc-spotify-player {
     order: 1;
+    border-top: 1px solid var(--border-subtle) !important;
+    border-bottom: 0 !important;
+    border-radius: 0 0 8px 8px !important;
 }
 
 body[data-vc-sidebar-collapse-picker-open]
@@ -438,12 +441,12 @@ function getChatTopOffset() {
             && rect.height >= 32
             && rect.height <= 100
             && rect.width >= Math.min(320, window.innerWidth * 0.4))
-            return Math.max(78, Math.ceil(rect.bottom + 18));
+            return Math.max(82, Math.ceil(rect.bottom + 22));
 
         toolbar = toolbar.parentElement;
     }
 
-    return 78;
+    return 82;
 }
 
 function updateFooterDock() {
