@@ -716,35 +716,35 @@ function FocusContextMenu() {
             {effectivePlacement === DockLocation.MemberList ? (
                 <Menu.MenuGroup label="Member list position">
                     <Menu.MenuRadioItem
-                        id="vc-sidebar-collapse-member-bottom"
-                        group="vc-sidebar-collapse-member-position"
-                        label="Bottom"
-                        checked={memberPosition === MemberPosition.Bottom}
-                        action={() => settings.store.memberPosition = MemberPosition.Bottom}
-                    />
-                    <Menu.MenuRadioItem
                         id="vc-sidebar-collapse-member-top"
                         group="vc-sidebar-collapse-member-position"
                         label="Top"
                         checked={memberPosition === MemberPosition.Top}
                         action={() => settings.store.memberPosition = MemberPosition.Top}
                     />
+                    <Menu.MenuRadioItem
+                        id="vc-sidebar-collapse-member-bottom"
+                        group="vc-sidebar-collapse-member-position"
+                        label="Bottom"
+                        checked={memberPosition === MemberPosition.Bottom}
+                        action={() => settings.store.memberPosition = MemberPosition.Bottom}
+                    />
                 </Menu.MenuGroup>
             ) : (
                 <Menu.MenuGroup label="Floating position">
-                    <Menu.MenuRadioItem
-                        id="vc-sidebar-collapse-chat-bottom"
-                        group="vc-sidebar-collapse-chat-position"
-                        label="Bottom right"
-                        checked={chatPosition === ChatPosition.Bottom}
-                        action={() => settings.store.chatPosition = ChatPosition.Bottom}
-                    />
                     <Menu.MenuRadioItem
                         id="vc-sidebar-collapse-chat-top"
                         group="vc-sidebar-collapse-chat-position"
                         label="Top right"
                         checked={chatPosition === ChatPosition.Top}
                         action={() => settings.store.chatPosition = ChatPosition.Top}
+                    />
+                    <Menu.MenuRadioItem
+                        id="vc-sidebar-collapse-chat-bottom"
+                        group="vc-sidebar-collapse-chat-position"
+                        label="Bottom right"
+                        checked={chatPosition === ChatPosition.Bottom}
+                        action={() => settings.store.chatPosition = ChatPosition.Bottom}
                     />
                 </Menu.MenuGroup>
             )}
