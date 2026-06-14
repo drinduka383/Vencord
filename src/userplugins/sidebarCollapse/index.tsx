@@ -244,7 +244,7 @@ body[data-vc-sidebar-collapse-focus]
 
 body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="chat"][data-vc-sidebar-collapse-chat-position="top"] {
-    top: var(--vc-sidebar-collapse-chat-top, 82px) !important;
+    top: var(--vc-sidebar-collapse-chat-top, 92px) !important;
     bottom: auto !important;
     display: flex !important;
     flex-direction: column !important;
@@ -441,12 +441,12 @@ function getChatTopOffset() {
             && rect.height >= 32
             && rect.height <= 100
             && rect.width >= Math.min(320, window.innerWidth * 0.4))
-            return Math.max(82, Math.ceil(rect.bottom + 22));
+            return Math.max(92, Math.ceil(rect.bottom + 32));
 
         toolbar = toolbar.parentElement;
     }
 
-    return 82;
+    return 92;
 }
 
 function updateFooterDock() {
