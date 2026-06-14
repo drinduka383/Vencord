@@ -231,6 +231,22 @@ body[data-vc-sidebar-collapse-focus]
     [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"][data-vc-sidebar-collapse-member-position="top"] {
     top: var(--vc-sidebar-collapse-dock-top) !important;
     bottom: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"][data-vc-sidebar-collapse-member-position="top"]
+    > [data-vc-sidebar-collapse-account-panel] {
+    order: -1;
+}
+
+body[data-vc-sidebar-collapse-focus]
+    [data-vc-sidebar-collapse-footer][data-vc-sidebar-collapse-dock-placement="member"][data-vc-sidebar-collapse-member-position="top"]
+    > #vc-spotify-player {
+    order: 1;
+    border-top: 1px solid var(--border-subtle) !important;
+    border-bottom: 0 !important;
 }
 
 body[data-vc-sidebar-collapse-focus]
@@ -673,6 +689,10 @@ function FocusContextMenu() {
         "dockLocation",
         "memberPosition",
     ]);
+    const memberListAvailable = roots.member?.isConnected && isVisibleRightColumn(roots.member);
+    const effectivePlacement = dockLocation === DockLocation.MemberList && memberListAvailable
+        ? DockLocation.MemberList
+        : DockLocation.Chat;
 
     return (
         <Menu.Menu navId="vc-sidebar-collapse" onClose={ContextMenuApi.closeContextMenu}>
@@ -693,39 +713,41 @@ function FocusContextMenu() {
                 />
             </Menu.MenuGroup>
             <Menu.MenuSeparator />
-            <Menu.MenuGroup label="Member list position">
-                <Menu.MenuRadioItem
-                    id="vc-sidebar-collapse-member-bottom"
-                    group="vc-sidebar-collapse-member-position"
-                    label="Bottom"
-                    checked={memberPosition === MemberPosition.Bottom}
-                    action={() => settings.store.memberPosition = MemberPosition.Bottom}
-                />
-                <Menu.MenuRadioItem
-                    id="vc-sidebar-collapse-member-top"
-                    group="vc-sidebar-collapse-member-position"
-                    label="Top"
-                    checked={memberPosition === MemberPosition.Top}
-                    action={() => settings.store.memberPosition = MemberPosition.Top}
-                />
-            </Menu.MenuGroup>
-            <Menu.MenuSeparator />
-            <Menu.MenuGroup label="Floating position">
-                <Menu.MenuRadioItem
-                    id="vc-sidebar-collapse-chat-bottom"
-                    group="vc-sidebar-collapse-chat-position"
-                    label="Bottom right"
-                    checked={chatPosition === ChatPosition.Bottom}
-                    action={() => settings.store.chatPosition = ChatPosition.Bottom}
-                />
-                <Menu.MenuRadioItem
-                    id="vc-sidebar-collapse-chat-top"
-                    group="vc-sidebar-collapse-chat-position"
-                    label="Top right"
-                    checked={chatPosition === ChatPosition.Top}
-                    action={() => settings.store.chatPosition = ChatPosition.Top}
-                />
-            </Menu.MenuGroup>
+            {effectivePlacement === DockLocation.MemberList ? (
+                <Menu.MenuGroup label="Member list position">
+                    <Menu.MenuRadioItem
+                        id="vc-sidebar-collapse-member-bottom"
+                        group="vc-sidebar-collapse-member-position"
+                        label="Bottom"
+                        checked={memberPosition === MemberPosition.Bottom}
+                        action={() => settings.store.memberPosition = MemberPosition.Bottom}
+                    />
+                    <Menu.MenuRadioItem
+                        id="vc-sidebar-collapse-member-top"
+                        group="vc-sidebar-collapse-member-position"
+                        label="Top"
+                        checked={memberPosition === MemberPosition.Top}
+                        action={() => settings.store.memberPosition = MemberPosition.Top}
+                    />
+                </Menu.MenuGroup>
+            ) : (
+                <Menu.MenuGroup label="Floating position">
+                    <Menu.MenuRadioItem
+                        id="vc-sidebar-collapse-chat-bottom"
+                        group="vc-sidebar-collapse-chat-position"
+                        label="Bottom right"
+                        checked={chatPosition === ChatPosition.Bottom}
+                        action={() => settings.store.chatPosition = ChatPosition.Bottom}
+                    />
+                    <Menu.MenuRadioItem
+                        id="vc-sidebar-collapse-chat-top"
+                        group="vc-sidebar-collapse-chat-position"
+                        label="Top right"
+                        checked={chatPosition === ChatPosition.Top}
+                        action={() => settings.store.chatPosition = ChatPosition.Top}
+                    />
+                </Menu.MenuGroup>
+            )}
         </Menu.Menu>
     );
 }
